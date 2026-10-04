@@ -10,15 +10,50 @@
  */
 
 import path from 'node:path';
+import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import dotenv from 'dotenv';
 
-const here = path.dirname(fileURLToPath(import.meta.url));
-export const SERVER_ROOT = path.resolve(here, '..');
-export const PROJECT_ROOT = path.resolve(SERVER_ROOT, '..');
+/**
+ * Locate the project root reliably for BOTH run modes:
+ *   - from source:   <root>/server/config/env.ts
+ *   - compiled:      <root>/dist-server/config/env.js
+ *
+ * Both are two levels below the root, so a fixed `../..` is correct either way.
+ * We then confirm it really is the root (it must contain package.json) and fall
+ * back to the working directory otherwise. Deriving the `.env` location from a
+ * "server root" variable instead was the bug: when compiled, that variable
+ * pointed at dist-server/ and server/.env was never found.
+ */
+const moduleDir = path.dirname(fileURLToPath(import.meta.url));
 
-dotenv.config({ path: path.join(PROJECT_ROOT, '.env') });
-dotenv.config({ path: path.join(SERVER_ROOT, '.env') });
+function isProjectRoot(dir: string): boolean {
+  return fs.existsSync(path.join(dir, 'package.json'));
+}
+
+function resolveProjectRoot(): string {
+  const candidates = [path.resolve(moduleDir, '..', '..'), process.cwd()];
+  for (const candidate of candidates) {
+    if (isProjectRoot(candidate)) return candidate;
+  }
+  // Nothing looked like a root; the module-relative guess is still the best guess.
+  return path.resolve(moduleDir, '..', '..');
+}
+
+export const PROJECT_ROOT = resolveProjectRoot();
+
+/** Root of the TypeScript server sources (present in the repo, not in dist-server). */
+export const SERVER_ROOT = path.join(PROJECT_ROOT, 'server');
+
+// Load `<root>/.env` then `<root>/server/.env` — the later file wins, so a
+// deployment can keep backend secrets in server/.env while the shared one holds
+// frontend config.
+for (const envPath of [
+  path.join(PROJECT_ROOT, '.env'),
+  path.join(PROJECT_ROOT, 'server', '.env'),
+]) {
+  if (fs.existsSync(envPath)) dotenv.config({ path: envPath });
+}
 
 function required(name: string): string {
   const value = process.env[name];

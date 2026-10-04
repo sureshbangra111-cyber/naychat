@@ -36,19 +36,38 @@ Create a database and put its connection string in `MONGODB_URI`.
 Any Node 20 host works (Render, Railway, Fly, a VPS, systemd, Docker). No
 hosting provider is hardcoded in this repo.
 
+### Option A — single step (build + serve)
+
 ```
 build command:  npm ci
 start command:  npm start
 health check:   GET /api/health  ->  {"ok":true,"database":"connected"}
 ```
 
-`npm start` runs `npm run build` first, so `dist/` is always current. If you
-build in one step and start in another (some CI systems), use:
+`npm start` builds then serves, so `dist/` is always current.
+
+### Option B — build and start as separate steps (recommended for most hosts)
+
+Many platforms install with `npm ci --omit=dev`, which strips the build tools
+(`tsc`, `vite`). That is fine, because **the server is compiled to plain JS** and
+runs on plain Node — no build tools needed at runtime:
 
 ```
-build command:  npm ci && npm run build
-start command:  npm run start:only
+build command:  npm ci && npm run build     # needs devDependencies
+start command:  npm run start:only          # runtime only
 ```
+
+If you instead run `npm start` on a `--omit=dev` host you will see
+`sh: tsc: command not found`, because that command tries to rebuild. Use
+`start:only` there.
+
+| Command | Runs | Needs devDeps? |
+| --- | --- | --- |
+| `npm run build` | Compiles frontend + server | yes |
+| `npm start` | build, then serve | yes |
+| `npm run start:only` | serve the existing build | **no** |
+| `npm run create-admin:prod` | admin bootstrap from compiled JS | **no** |
+| `npm run create-admin` | admin bootstrap from TS via `tsx` | yes |
 
 Environment variables (all server-side; **never** `VITE_`-prefixed):
 
@@ -129,6 +148,7 @@ location / {
 | Symptom | Cause |
 | --- | --- |
 | Plain-text "Frontend build not found" | Run `npm run build`, or use `npm start` |
+| `sh: tsc: command not found` | Dev tools were omitted. Run `npm run start:only` (build elsewhere) |
 | 404 on `/api/*` | API not running, or proxy points at the wrong port |
 | 500 on admin login | Check logs; usually Mongo unreachable |
 | Password always rejected | Unquoted `#` in `.env`, or `create-admin` not re-run |

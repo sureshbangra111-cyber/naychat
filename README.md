@@ -118,7 +118,9 @@ WebSockets, Redis or pub-sub were introduced.
 | `npm run build` | Typecheck + production frontend build |
 | `npm run typecheck` | Typecheck frontend **and** server |
 | `npm start` | **Build + serve everything** from one Node process |
-| `npm run start:only` | Serve an existing `dist/` without rebuilding |
+| `npm run build` | Compile frontend (`dist/`) and server (`dist-server/`) |
+| `npm run start:only` | Serve an existing build — no build tools needed |
+| `npm run create-admin:prod` | Admin bootstrap without `tsx` |
 | `npm run create-admin` | Create/update the admin account (bcrypt, idempotent) |
 
 In production `npm start` builds the frontend and then serves **both** the API
@@ -131,6 +133,10 @@ one artifact, and the session cookies stay first-party (no CORS).
 | `/api/*` | The JSON API |
 
 Deep links and hard refreshes work on every route.
+
+The server is compiled to plain JavaScript (`dist-server/`), so a production
+install only needs the runtime dependencies — `npm run start:only` works even
+when the host installed with `npm ci --omit=dev` and stripped `tsc`/`vite`.
 
 ## Notes
 
