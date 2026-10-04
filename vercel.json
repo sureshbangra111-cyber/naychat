@@ -6,11 +6,11 @@
   "includeFiles": ["dist/**"],
   "builds": [
     {
-      "src": "dist-server/vercel.js",
+      "src": "dist-server/handler.js",
       "use": "@vercel/node"
     }
   ],
   "routes": [
-    { "src": "/(.*)", "dest": "dist-server/vercel.js" }
+    { "src": "/(.*)", "dest": "dist-server/handler.js" }
   ]
 }
