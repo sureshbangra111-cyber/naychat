@@ -22,6 +22,54 @@ SPA deep links and hard refreshes work on every route. Because everything is
 same-origin, the httpOnly session cookies are first-party — no CORS, no
 cross-site cookie problems.
 
+## Vercel
+
+The repo ships a ready `vercel.json`, so this is a paste-and-deploy.
+
+**Root Directory:** the folder containing `package.json`
+(`anonymous-support-chat`) — if you push the repo root, leave it blank.
+
+**Build & Output settings (Project → Settings → Build & Deployment):**
+
+| Field | Value |
+| --- | --- |
+| Framework Preset | Other |
+| Build Command | `npm run build` |
+| Install Command | `npm install --include=dev` |
+| Output Directory | *(leave blank)* |
+
+**Environment Variables** (Project → Settings → Environment Variables):
+
+```
+MONGODB_URI=mongodb+srv://USER:PASSWORD@cluster0.xxxxx.mongodb.net
+MONGODB_DB=support_chat
+SESSION_SECRET=<openssl rand -hex 32>
+ADMIN_EMAIL=admin@chatadmin.local
+ADMIN_PASSWORD="Admin@2026#Secure"
+PORT=4100
+NODE_ENV=production
+```
+
+> `vercel.json` already sets `buildCommand`, `installCommand` and the serverless
+> build, so the dashboard fields are usually left as-is.
+
+Then create the admin once:
+
+```bash
+npx vercel env pull .env.local   # optional
+npm run create-admin
+```
+
+Notes:
+- Vercel runs **serverless**: each request imports `dist-server/vercel.js`,
+  which exports the Express app as the request handler. There is no long-lived
+  process, so the app must stay stateless — sessions live in MongoDB, which they
+  already do.
+- `includeFiles: ["dist/**"]` ships the built frontend into the function so
+  `express.static` can serve it.
+- Cookies are `Secure` automatically on Vercel's HTTPS domains.
+- `trust proxy` is already enabled, so `x-forwarded-proto` is honoured.
+
 ## 1. MongoDB
 
 Create a database and put its connection string in `MONGODB_URI`.
