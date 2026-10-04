@@ -3,14 +3,19 @@
   "framework": null,
   "buildCommand": "npm run build",
   "installCommand": "npm install --include=dev",
-  "includeFiles": ["dist/**"],
   "builds": [
     {
       "src": "dist-server/handler.js",
-      "use": "@vercel/node"
+      "use": "@vercel/node",
+      "includeFiles": [
+        "dist/**"
+      ]
     }
   ],
   "routes": [
-    { "src": "/(.*)", "dest": "dist-server/handler.js" }
+    {
+      "src": "/(.*)",
+      "dest": "/dist-server/handler.js"
+    }
   ]
 }
