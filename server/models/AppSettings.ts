@@ -15,6 +15,24 @@ const appSettingsSchema = new Schema(
     welcomeMessage: { type: String, required: true, maxlength: 500 },
     /** Kill switch: when false, visitors cannot start new conversations. */
     chatEnabled: { type: Boolean, default: true },
+
+    /**
+     * META ADS TRACKING
+     *
+     * `metaPixelId` is the runtime source of truth for browser Pixel
+     * configuration and is editable from Admin Settings. It is deliberately NOT a
+     * build-time `VITE_*` variable, so changing it never requires a redeploy.
+     *
+     * Only a strictly numeric Meta Pixel / Dataset ID is accepted (validated by
+     * `validateMetaPixelId`), and the value is only ever interpolated into the
+     * official Meta loader URL as a path segment — never into a script body, so
+     * it cannot become executable markup.
+     *
+     * The Conversions API access token is NOT stored here: it is a secret and
+     * lives only in the server environment.
+     */
+    metaPixelId: { type: String, default: null, maxlength: 32 },
+    metaTrackingEnabled: { type: Boolean, default: false },
   },
   { timestamps: true },
 );

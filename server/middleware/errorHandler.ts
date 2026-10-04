@@ -8,7 +8,8 @@
 
 import type { NextFunction, Request, Response } from 'express';
 import mongoose from 'mongoose';
-import { ApiError } from '../utils/errors.js';
+import { ApiError, attachmentStorageUnavailable } from '../utils/errors.js';
+import { AttachmentStorageUnavailableError } from '../services/attachments/storage.js';
 
 export function notFoundHandler(_req: Request, res: Response): void {
   res.status(404).json({ error: { code: 'not_found', message: 'Endpoint not found.' } });
@@ -22,6 +23,19 @@ export function errorHandler(
 ): void {
   if (error instanceof ApiError) {
     res.status(error.status).json({ error: { code: error.code, message: error.publicMessage } });
+    return;
+  }
+
+  // Attachment storage not initialisable (e.g. a read-only filesystem on
+  // serverless hosting). Log the operator-facing reason, return a customer-safe
+  // 503. Chat, admin and tracking are unaffected.
+  if (error instanceof AttachmentStorageUnavailableError) {
+    // eslint-disable-next-line no-console
+    console.error('[attachments] storage unavailable:', error.reason);
+    const notReady = attachmentStorageUnavailable(error.reason);
+    res.status(notReady.status).json({
+      error: { code: notReady.code, message: notReady.publicMessage },
+    });
     return;
   }
 

@@ -18,7 +18,6 @@ import { useMessages } from '../hooks/useMessages';
 import { usePolling } from '../hooks/usePolling';
 import { fetchConversationForAdmin } from '../services/admins';
 import { setConversationStatus } from '../services/conversations';
-import { formatCampaignLabel } from '../lib/analytics';
 import { shortVisitorId } from '../lib/utils';
 import { POLL } from '../types/chat';
 import type { AdminConversationSummary, ConversationStatus } from '../types/chat';
@@ -129,14 +128,14 @@ export function AdminConversationPage() {
                   {summary.customer_phone}
                 </span>
               ) : null}
-              <span className="inline-flex items-center gap-1">
-                <Megaphone className="h-3 w-3" aria-hidden="true" />
-                {formatCampaignLabel(
-                  summary.utm_source,
-                  summary.utm_medium,
-                  summary.utm_campaign,
-                )}
-              </span>
+              <CampaignAttribution
+                source={summary.utm_source}
+                medium={summary.utm_medium}
+                campaign={summary.utm_campaign}
+                term={summary.utm_term}
+                content={summary.utm_content}
+                fbclid={summary.fbclid}
+              />
             </p>
           </div>
 
@@ -204,6 +203,7 @@ export function AdminConversationPage() {
         loadingOlder={messages.loadingOlder}
         onLoadOlder={() => void messages.loadOlder()}
         onDiscard={messages.discardFailed}
+        onRetry={(id) => void messages.retryFailed(id)}
         emptyTitle="No messages yet"
         emptyDescription="Messages from the customer will appear here."
       />
@@ -217,6 +217,7 @@ export function AdminConversationPage() {
       <div className="mx-auto w-full max-w-4xl">
         <ChatComposer
           onSend={messages.send}
+          onSendMedia={messages.sendMedia}
           placeholder="Type reply..."
           disabled={isClosed}
           disabledHint="This conversation is closed. Reopen it to reply."
@@ -229,4 +230,78 @@ export function AdminConversationPage() {
       </p>
     </div>
   );
+}
+
+/**
+ * Advertising attribution panel.
+ *
+ * Shows what the agent needs to judge a lead: where the click came from, which
+ * campaign/ad, and the medium. Falls back to "Organic / Direct" so the absence of
+ * attribution is explicit rather than a blank.
+ *
+ * PRIVACY: this renders advertising parameters only — never the visitor's IP,
+ * user agent, or anything about the conversation itself. `fbclid` is a Meta click
+ * identifier, not personal data, and it is only rendered when one was captured.
+ */
+function CampaignAttribution(props: {
+  source: string | null;
+  medium: string | null;
+  campaign: string | null;
+  term: string | null;
+  content: string | null;
+  fbclid: string | null;
+}) {
+  const { source, medium, campaign, term, content, fbclid } = props;
+  const hasAny = Boolean(source || medium || campaign || term || content);
+
+  return (
+    <div className="w-full rounded-xl border border-slate-200 bg-white p-4">
+      <p className="flex items-center gap-1.5 text-xs font-semibold text-slate-700">
+        <Megaphone className="h-3.5 w-3.5 text-slate-400" aria-hidden="true" />
+        Traffic attribution
+      </p>
+
+      {!hasAny ? (
+        <p className="mt-2 text-sm text-slate-500">Organic / Direct</p>
+      ) : (
+        <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-3">
+          <Attr label="Traffic source" value={source ? prettySource(source) : 'Organic / Direct'} />
+          <Attr label="Medium" value={medium} />
+          <Attr label="Campaign" value={campaign} />
+          <Attr label="Ad" value={content} />
+          <Attr label="Term" value={term} />
+          {fbclid ? (
+            <div className="min-w-0">
+              <dt className="text-[11px] uppercase tracking-wide text-slate-400">fbclid</dt>
+              <dd className="truncate font-mono text-xs text-slate-600" title={fbclid}>
+                {fbclid}
+              </dd>
+            </div>
+          ) : null}
+        </dl>
+      )}
+    </div>
+  );
+}
+
+function Attr({ label, value }: { label: string; value: string | null }) {
+  return (
+    <div className="min-w-0">
+      <dt className="text-[11px] uppercase tracking-wide text-slate-400">{label}</dt>
+      <dd className="truncate text-sm text-slate-700" title={value ?? undefined}>
+        {value || '—'}
+      </dd>
+    </div>
+  );
+}
+
+/** Human-friendly names for the ad networks we actually see in traffic. */
+function prettySource(source: string): string {
+  const normalised = source.toLowerCase();
+  if (normalised === 'facebook' || normalised === 'fb') return 'Facebook / Instagram';
+  if (normalised === 'instagram' || normalised === 'ig') return 'Instagram';
+  if (normalised === 'google' || normalised === 'adwords' || normalised === 'cpc') {
+    return 'Google Ads';
+  }
+  return source;
 }

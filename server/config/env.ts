@@ -103,6 +103,64 @@ export const config = {
     maxConversationsPerVisitor: Number(process.env.MAX_CONVERSATIONS_PER_VISITOR ?? 25),
   },
 
+  /**
+   * Media attachments (Feature: image + voice messages).
+   *
+   * Everything here is SERVER-SIDE ONLY. No storage credential is ever prefixed
+   * VITE_, so Vite cannot inline one into the browser bundle.
+   *
+   * Architecture: Express -> AttachmentStorage driver -> MongoDB keeps METADATA
+   * only (storageKey, mimeType, size, dimensions, duration). Binary payloads
+   * never live inside a message document and are never base64-encoded in the
+   * database, so a message document stays small and cheap to poll.
+   */
+  attachments: {
+    /** `local` writes to ATTACHMENT_STORAGE_DIR; `s3` is a drop-in later. */
+    driver: (process.env.ATTACHMENT_STORAGE_DRIVER ?? 'local').trim().toLowerCase(),
+    /** Root directory for the local driver. Never exposed to the browser. */
+    storageDir: path.resolve(
+      SERVER_ROOT,
+      process.env.ATTACHMENT_STORAGE_DIR?.trim() || '../.data/attachments',
+    ),
+    /** Hard ceiling applied during streaming, independent of any Content-Length. */
+    maxImageBytes: Math.round(Number(process.env.IMAGE_MAX_SIZE_MB ?? 10) * 1024 * 1024),
+    maxAudioBytes: Math.round(Number(process.env.AUDIO_MAX_SIZE_MB ?? 10) * 1024 * 1024),
+    /** Attachments uploaded but never attached to a message are swept after this. */
+    orphanTtlMs: Number(process.env.ATTACHMENT_ORPHAN_TTL_MS ?? 60 * 60 * 1000),
+    /** How many attachments one conversation may hold (abuse guard). */
+    maxPerConversation: Number(process.env.ATTACHMENT_MAX_PER_CONVERSATION ?? 100),
+    /** Server-side cap on the caption that may accompany a media message. */
+    maxCaptionLength: Number(process.env.ATTACHMENT_MAX_CAPTION_LENGTH ?? 1000),
+  },
+
+  /**
+   * Meta Ads / Conversions API — SERVER-ONLY SECRETS.
+   *
+   * `metaConversionsApiAccessToken` is a credential. It is never prefixed VITE_,
+   * never stored in MongoDB, never returned by /api/public/config, and never
+   * logged. When it is absent, every Conversions API call becomes a no-op, so
+   * browser Pixel tracking keeps working on its own.
+   *
+   * NOTE: the *browser* Pixel ID is NOT configured here. It lives in AppSettings
+   * and is edited from Admin Settings, so it can change without a redeploy.
+   * `metaPixelIdEnv` below is only a server-side fallback for the Conversions
+   * API dataset, for deployments that never touch the admin UI.
+   */
+  meta: {
+    /** Server-only fallback dataset ID for Conversions API. Never sent to the browser. */
+    pixelIdFallback: process.env.META_PIXEL_ID?.trim() || '',
+    /**
+     * Access token for the Meta Conversions API. Secret: server environment only.
+     * Never exposed through any endpoint, never persisted, never logged.
+     */
+    conversionsApiAccessToken: process.env.META_CONVERSIONS_API_ACCESS_TOKEN?.trim() || '',
+    /** Graph API version used for Conversions API calls. */
+    graphApiVersion: process.env.META_GRAPH_API_VERSION?.trim() || 'v21.0',
+    /** Master kill switch for server-side Conversions API delivery. */
+    conversionsApiEnabled:
+      (process.env.META_CONVERSIONS_API_ENABLED ?? 'true').trim().toLowerCase() !== 'false',
+  },
+
   /** Seeded on first boot so a fresh database is immediately usable. */
   defaultSettings: {
     companyName: process.env.DEFAULT_COMPANY_NAME ?? 'Support Team',

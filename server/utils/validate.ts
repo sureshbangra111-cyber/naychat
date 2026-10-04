@@ -84,3 +84,38 @@ export function clampInt(
   if (!Number.isFinite(parsed)) return fallback;
   return Math.min(Math.max(parsed, min), max);
 }
+
+/**
+ * Meta Pixel / Dataset ID validation.
+ *
+ * A Meta Pixel ID (and a Dataset ID) is a plain numeric identifier. We accept
+ * ONLY digits, 5-20 characters long, which is deliberately stricter than Meta's
+ * own format and has two useful properties:
+ *
+ *  1. It makes HTML/JS injection structurally impossible: `<script>`, quotes,
+ *     backticks, whitespace and URL separators are all rejected outright, so the
+ *     value can never terminate an attribute or a script body.
+ *  2. The value is safe to interpolate into the official Meta loader URL as a
+ *     path segment.
+ *
+ * Returns the trimmed id, or null when the input is empty (tracking disabled).
+ * Throws for a non-empty value that is not a valid id.
+ */
+export function validateMetaPixelId(value: unknown): string | null {
+  if (value === null || value === undefined) return null;
+  if (typeof value !== 'string') {
+    throw badRequest('Please enter a valid Meta Pixel ID.', 'invalid_meta_pixel_id');
+  }
+
+  const trimmed = value.trim();
+  // Empty (or whitespace-only) simply means "no Pixel configured".
+  if (trimmed.length === 0) return null;
+
+  if (!/^\d{5,20}$/.test(trimmed)) {
+    throw badRequest(
+      'Please enter a valid Meta Pixel ID: digits only, for example 123456789012345.',
+      'invalid_meta_pixel_id',
+    );
+  }
+  return trimmed;
+}

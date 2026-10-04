@@ -20,20 +20,31 @@ import { connectDatabase } from './config/db.js';
 const app = createApp();
 
 /**
- * The connection promise is created once per cold start and awaited before the
- * first request is served, so no request is handled before MongoDB is ready.
+ * One connection attempt per cold start, shared by every request.
+ * Reset on failure so a later invocation can retry.
  */
 let ready: Promise<unknown> | null = null;
 
 async function handler(req: unknown, res: unknown): Promise<void> {
-  if (!ready) {
-    ready = connectDatabase().catch((error) => {
-      // Clear the cached failure so a later invocation can retry.
-      ready = null;
-      throw error;
-    });
+  try {
+    if (!ready) {
+      ready = connectDatabase().catch((error) => {
+        ready = null;
+        throw error;
+      });
+    }
+    await ready;
+  } catch (error) {
+    // Do NOT rethrow: letting this bubble aborts the whole serverless
+    // invocation and Vercel reports an opaque FUNCTION_INVOCATION_FAILED with
+    // no body. Continuing lets the app answer /api/health with a real reason
+    // and lets request handlers surface a normal 5xx JSON error instead.
+    console.error(
+      '[db] connection failed:',
+      error instanceof Error ? error.message : String(error),
+    );
   }
-  await ready;
+
   (app as unknown as (rq: unknown, rs: unknown) => unknown)(req, res);
 }
 

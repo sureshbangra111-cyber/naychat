@@ -6,6 +6,7 @@ import { ChatPage } from './pages/ChatPage';
 import { LandingPage } from './pages/LandingPage';
 import { NotFoundPage } from './pages/NotFoundPage';
 import { useAuth, AuthProvider } from './hooks/useAuth';
+import { useMetaTracking } from './hooks/useMetaTracking';
 import { Spinner } from './components/ui/Button';
 
 // Admin screens are code-split so the public chat page stays small.
@@ -21,6 +22,15 @@ const AdminConversationPage = lazy(() =>
 const AdminSettingsPage = lazy(() =>
   import('./pages/AdminSettingsPage').then((m) => ({ default: m.AdminSettingsPage })),
 );
+
+/**
+ * Renders nothing. Exists purely so the tracking effect has a component that
+ * lives above the router and survives navigation between all routes.
+ */
+function MetaTracking() {
+  useMetaTracking();
+  return null;
+}
 
 function RouteFallback() {
   return (
@@ -58,6 +68,9 @@ function RequireAdmin({ children }: { children: ReactNode }) {
 export default function App() {
   return (
     <AuthProvider>
+      {/* Mounted once at the root; internally it no-ops on /admin/* routes. */}
+      <MetaTracking />
+
       <Suspense fallback={<RouteFallback />}>
         <Routes>
         {/* `/chat` is the first-class entry point: a visitor is dropped

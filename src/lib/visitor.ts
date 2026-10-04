@@ -92,7 +92,31 @@ export function setActiveConversationId(id: string | null): void {
  * sets an httpOnly cookie on first call, and every later request is authorised
  * from that cookie rather than from anything the page can read or forge.
  */
-export async function ensureAnonymousSession(): Promise<string> {
-  const data = await apiRequest<{ visitor_id: string }>('/session');
+/**
+ * Ensures the server-side anonymous visitor session exists, and hands the server
+ * the advertising attribution currently in the URL.
+ *
+ * The attribution is sent here — at session bootstrap, BEFORE any conversation
+ * exists — so it is stored as first-touch on the visitor record and survives a
+ * refresh, a cleaned URL, or a later conversation. The server stores it
+ * first-touch-only and never lets a later visit overwrite the original click.
+ *
+ * Only advertising parameters are transmitted. No message content, no
+ * conversation data, and nothing that identifies the visitor beyond the session
+ * the server already issued.
+ */
+export async function ensureAnonymousSession(
+  attribution?: Record<string, string | null | undefined>,
+): Promise<string> {
+  const query = new URLSearchParams();
+  for (const [key, value] of Object.entries(attribution ?? {})) {
+    if (typeof value === 'string' && value.trim().length > 0) {
+      query.set(key, value.trim().slice(0, 500));
+    }
+  }
+  const suffix = query.toString();
+  const data = await apiRequest<{ visitor_id: string }>(
+    suffix ? `/session?${suffix}` : '/session',
+  );
   return data.visitor_id;
 }

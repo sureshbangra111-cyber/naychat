@@ -8,6 +8,37 @@ import type {
   ConversationStatus,
 } from '../types/chat';
 import { asStatus } from '../types/database';
+import { isValidPixelId as isValidMetaPixelId } from '../lib/metaPixel';
+
+/** Admin settings, including Meta Ads configuration. */
+export interface AdminSettings extends AppSettings {
+  meta_pixel_id: string | null;
+  meta_tracking_enabled: boolean;
+}
+
+/** Result of the admin "Test Pixel" verification. */
+export interface MetaPixelVerification {
+  /** The typed value is a structurally valid Meta id. */
+  validFormat: boolean;
+  /** What MongoDB currently holds. */
+  saved: string | null;
+  /** What `GET /api/public/config` currently returns. */
+  served: string | null;
+  trackingEnabled: boolean;
+  /** The typed value matches what was saved. */
+  savedMatches: boolean;
+  /** What is saved is what a browser would receive. */
+  servedMatches: boolean;
+}
+
+/** Shape of `GET /api/public/config`. Safe, public fields only. */
+export interface PublicRuntimeConfig {
+  company_name: string;
+  welcome_message: string;
+  chat_enabled: boolean;
+  meta_pixel_id: string | null;
+  meta_tracking_enabled: boolean;
+}
 
 export const DEFAULT_SETTINGS: AppSettings = {
   company_name: 'Support Team',
@@ -73,6 +104,32 @@ export interface StartConversationInput {
   customerName?: string | null;
   customerPhone?: string | null;
   campaign: CampaignParams;
+  /**
+   * Browser-generated Meta event id for this conversion. The server reuses it
+   * for the Conversions API so the browser and server events deduplicate in
+   * Meta's reporting. Opaque to the server beyond being an id.
+   */
+  metaEventId?: string | null;
+}
+
+/**
+ * Public runtime configuration (company name, welcome copy, Meta Pixel id).
+ * Unauthenticated by design: the browser needs it before deciding whether to load
+ * Meta's script. Returns only allow-listed public fields.
+ */
+export async function fetchPublicConfig(): Promise<PublicRuntimeConfig> {
+  try {
+    return await apiRequest<PublicRuntimeConfig>('/public/config');
+  } catch {
+    // A config failure must never break the chat.
+    return {
+      company_name: DEFAULT_SETTINGS.company_name,
+      welcome_message: DEFAULT_SETTINGS.welcome_message,
+      chat_enabled: true,
+      meta_pixel_id: null,
+      meta_tracking_enabled: false,
+    };
+  }
 }
 
 /** Creates a conversation and its first message in a single atomic call. */
@@ -96,6 +153,9 @@ export async function startConversation(input: StartConversationInput): Promise<
           referrer: input.campaign.referrer ?? null,
           first_message: input.firstMessage.trim(),
         },
+        // Shared Pixel <-> Conversions API deduplication key. Never a message id
+        // and never derived from message content.
+        ...(input.metaEventId ? { meta_event_id: input.metaEventId } : {}),
       },
     });
     return data.conversationId;
@@ -105,6 +165,78 @@ export async function startConversation(input: StartConversationInput): Promise<
     if (message.includes('limit of conversations')) throw new Error('TOO_MANY_CONVERSATIONS');
     throw error;
   }
+}
+
+/**
+ * Admin settings, including the Meta Ads configuration.
+ *
+ * Admin-only (the server gates this behind `requireAdmin`). Returns the Pixel ID
+ * — a public identifier by nature — and the enabled flag. It never returns the
+ * Conversions API access token, which is not stored in the database at all.
+ */
+export async function fetchAdminSettings(): Promise<AdminSettings> {
+  const data = await apiRequest<Record<string, unknown>>('/admin/settings');
+  return {
+    company_name: String(data.company_name ?? DEFAULT_SETTINGS.company_name),
+    welcome_message: String(data.welcome_message ?? DEFAULT_SETTINGS.welcome_message),
+    chat_enabled: data.chat_enabled !== false,
+    meta_pixel_id: (data.meta_pixel_id as string | null) ?? null,
+    meta_tracking_enabled: data.meta_tracking_enabled === true,
+  };
+}
+
+/** Admin-only: persists settings. The server validates the Pixel ID. */
+export async function saveAdminSettings(input: {
+  companyName: string;
+  welcomeMessage: string;
+  chatEnabled: boolean;
+  metaPixelId: string;
+  metaTrackingEnabled: boolean;
+}): Promise<AdminSettings> {
+  const data = await apiRequest<Record<string, unknown>>('/admin/settings', {
+    method: 'PATCH',
+    body: {
+      companyName: input.companyName,
+      welcomeMessage: input.welcomeMessage,
+      chatEnabled: input.chatEnabled,
+      metaPixelId: input.metaPixelId,
+      metaTrackingEnabled: input.metaTrackingEnabled,
+    },
+  });
+  return {
+    company_name: String(data.company_name ?? ''),
+    welcome_message: String(data.welcome_message ?? ''),
+    chat_enabled: data.chat_enabled !== false,
+    meta_pixel_id: (data.meta_pixel_id as string | null) ?? null,
+    meta_tracking_enabled: data.meta_tracking_enabled === true,
+  };
+}
+
+/**
+ * Admin-only verification for the "Test Pixel" button.
+ *
+ * Confirms three things without requiring the admin to paste any JavaScript:
+ *   * the supplied id is structurally valid,
+ *   * the value currently saved in MongoDB is what the server reports,
+ *   * the PUBLIC config endpoint actually serves that id to a browser.
+ *
+ * The access token is never involved and never returned.
+ */
+export async function verifyMetaPixel(pixelId: string): Promise<MetaPixelVerification> {
+  const [admin, publicConfig] = await Promise.all([
+    apiRequest<Record<string, unknown>>('/admin/settings'),
+    apiRequest<Record<string, unknown>>('/public/config'),
+  ]);
+  const saved = (admin.meta_pixel_id as string | null) ?? null;
+  const served = (publicConfig.meta_pixel_id as string | null) ?? null;
+  return {
+    validFormat: isValidMetaPixelId(pixelId),
+    saved,
+    served,
+    trackingEnabled: admin.meta_tracking_enabled === true,
+    savedMatches: saved === (pixelId.trim() || null),
+    servedMatches: served === saved,
+  };
 }
 
 /** Admin-only: close / reopen / change status. */

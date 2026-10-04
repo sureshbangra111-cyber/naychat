@@ -17,9 +17,9 @@ import { destroyAdminSession, verifyCredentials, type AdminDTO } from '../servic
 import {
   addTag,
   getCampaignStats,
+  getAdminSettings,
   getConversationForAdmin,
   getDashboardStats,
-  getSettings,
   listAllMessages,
   listCampaignNames,
   listConversationsForAdmin,
@@ -27,6 +27,7 @@ import {
   listMessagesSince,
   listTags,
   markConversationRead,
+  sendAdminMediaMessage,
   sendAdminMessage,
   setConversationStatus,
   updateSettings,
@@ -150,6 +151,20 @@ adminRouter.post(
     const id = requireObjectId(req.params.id, 'conversation id');
     const admin = req.admin as AdminDTO;
     const body = req.body as Record<string, unknown>;
+
+    // Media replies go through the same service the customer path uses, so the
+    // admin console produces identical message documents. `admin.id` is the
+    // session-derived id — the body's sender fields are ignored entirely.
+    if (typeof body.attachmentId === 'string' && body.attachmentId.length > 0) {
+      const message = await sendAdminMediaMessage(admin.id, id, {
+        attachmentId: body.attachmentId,
+        message: body.message,
+        clientId: body.clientId,
+      });
+      res.status(201).json({ message });
+      return;
+    }
+
     const message = await sendAdminMessage(admin.id, id, { message: body.message });
     res.status(201).json({ message });
   }),
@@ -199,10 +214,17 @@ adminRouter.post(
   }),
 );
 
+/**
+ * Admin settings, including the Meta Ads configuration.
+ *
+ * Safe to expose to a signed-in admin: it returns the Pixel ID, which is public
+ * by nature, and a boolean. It never returns the Conversions API access token,
+ * which is not readable from MongoDB at all — it lives only in the environment.
+ */
 adminRouter.get(
   '/settings',
   asyncHandler(async (_req, res) => {
-    res.json(await getSettings());
+    res.json(await getAdminSettings());
   }),
 );
 
@@ -215,6 +237,9 @@ adminRouter.patch(
         companyName: body.companyName ?? body.company_name,
         welcomeMessage: body.welcomeMessage ?? body.welcome_message,
         chatEnabled: body.chatEnabled ?? body.chat_enabled,
+        // Pixel configuration. Validated server-side; never trusted as-is.
+        metaPixelId: body.metaPixelId ?? body.meta_pixel_id,
+        metaTrackingEnabled: body.metaTrackingEnabled ?? body.meta_tracking_enabled,
       }),
     );
   }),

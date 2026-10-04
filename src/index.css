@@ -56,4 +56,34 @@
   .scroll-slim::-webkit-scrollbar-track {
     background: transparent;
   }
+
+  /*
+   * Message-list backdrop.
+   *
+   * A deliberately faint radial-dot texture on a near-white base: it gives the
+   * conversation depth and separates the bubbles from the canvas without the
+   * visual noise of a photographic or gradient background, and it stays legible
+   * in both light and dark system colour schemes because it is drawn behind
+   * solid bubbles rather than tinting them.
+   */
+  .chat-canvas {
+    background-color: #f6f7f9;
+    background-image: radial-gradient(circle at 1px 1px, rgb(15 23 42 / 0.055) 1px, transparent 0);
+    background-size: 14px 14px;
+  }
+
+  /*
+   * Respect a user's reduced-motion preference: the recording indicator pulses
+   * and messages smooth-scroll, both of which can be disabled safely.
+   */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
 }

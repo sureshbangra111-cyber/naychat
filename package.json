@@ -16,10 +16,21 @@
     "dev:all": "npm run dev:server & npm run dev",
     "preview": "vite preview",
     "clean": "node -e \"fs.rmSync('dist',{recursive:true,force:true});fs.rmSync('dist-server',{recursive:true,force:true})\"",
-    "create-admin:compiled": "cross-env NODE_ENV=production node dist-server/scripts/create-admin.js"
+    "create-admin:compiled": "cross-env NODE_ENV=production node dist-server/scripts/create-admin.js",
+    "test:api": "node e2e-api-test.mjs",
+    "test:customer": "node e2e-browser-test.mjs",
+    "test:admin": "node e2e-admin-test.mjs",
+    "test:responsive": "node e2e-responsive-test.mjs",
+    "test:security": "node e2e-security-test.mjs",
+    "test:regression": "node e2e-regression-test.mjs",
+    "test:e2e": "npm run test:api && npm run test:meta && npm run test:customer && npm run test:admin && npm run test:responsive && npm run test:security && npm run test:regression && npm run test:a11y && npm run test:meta:browser",
+    "test:a11y": "node e2e-a11y-test.mjs",
+    "test:meta": "node e2e-meta-test.mjs",
+    "test:meta:browser": "node e2e-meta-browser-test.mjs"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.3.3",
+    "@types/busboy": "^1.5.4",
     "@types/cookie-parser": "^1.4.9",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
@@ -28,6 +39,7 @@
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.1",
     "bcryptjs": "^3.0.3",
+    "busboy": "^1.6.0",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.6",
     "cross-env": "^10.1.0",
@@ -43,5 +55,9 @@
     "tsx": "^4.20.6",
     "typescript": "5.9",
     "vite": "^8.3.2"
+  },
+  "devDependencies": {
+    "playwright": "^1.63.0",
+    "playwright-core": "^1.63.0"
   }
 }

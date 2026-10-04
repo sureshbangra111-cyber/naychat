@@ -138,6 +138,7 @@ export function ChatPage() {
             loadingOlder={messages.loadingOlder}
             onLoadOlder={() => void messages.loadOlder()}
             onDiscard={messages.discardFailed}
+            onRetry={(id) => void messages.retryFailed(id)}
             emptyTitle="No messages yet"
             emptyDescription="Send a message and our team will get back to you shortly."
           />
@@ -154,6 +155,7 @@ export function ChatPage() {
 
           <ChatComposer
             onSend={messages.send}
+            onSendMedia={messages.sendMedia}
             disabled={isClosed || !settings.chat_enabled}
             disabledHint={
               settings.chat_enabled ? composerHint : 'Chat is currently unavailable.'

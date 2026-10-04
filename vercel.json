@@ -3,19 +3,15 @@
   "framework": null,
   "buildCommand": "npm run build",
   "installCommand": "npm install --include=dev",
-  "builds": [
-    {
-      "src": "dist-server/handler.js",
-      "use": "@vercel/node",
-      "includeFiles": [
-        "dist/**"
-      ]
+  "functions": {
+    "api/index.js": {
+      "includeFiles": "dist/**",
+      "excludeFiles": "server/.env*",
+      "maxDuration": 30
     }
-  ],
-  "routes": [
-    {
-      "src": "/(.*)",
-      "dest": "/dist-server/handler.js"
-    }
+  },
+  "rewrites": [
+    { "source": "/api/(.*)", "destination": "/api/index" },
+    { "source": "/((?!api/).*)", "destination": "/index.html" }
   ]
 }

@@ -37,3 +37,15 @@ export const tooManyRequests = (message = 'Too many attempts. Please try again l
 
 export const serviceUnavailable = (message = 'Chat is temporarily unavailable. Please try again.') =>
   new ApiError(503, 'service_unavailable', message);
+
+/**
+ * Attachments are unavailable — almost always a deployment configuration issue
+ * (no persistent/object storage), not something the customer can fix.
+ */
+export const attachmentStorageUnavailable = (detail: string) =>
+  new ApiError(
+    503,
+    'attachment_storage_unavailable',
+    'Sending photos and voice messages is temporarily unavailable. Please send your message as text instead.',
+    detail,
+  );

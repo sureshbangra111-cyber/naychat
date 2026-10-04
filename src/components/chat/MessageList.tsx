@@ -14,6 +14,8 @@ interface Props {
   loadingOlder: boolean;
   onLoadOlder: () => void;
   onDiscard: (id: string) => void;
+  /** Re-sends a failed media message with its original idempotency key. */
+  onRetry?: (id: string) => void;
   emptyTitle: string;
   emptyDescription?: string;
 }
@@ -31,6 +33,7 @@ export function MessageList({
   loadingOlder,
   onLoadOlder,
   onDiscard,
+  onRetry,
   emptyTitle,
   emptyDescription,
 }: Props) {
@@ -71,7 +74,7 @@ export function MessageList({
       <div
         ref={scrollRef}
         onScroll={handleScroll}
-        className="scroll-slim h-full overflow-y-auto bg-slate-50 py-4"
+        className="scroll-slim h-full overflow-y-auto py-4 chat-canvas"
         role="log"
         aria-live="polite"
         aria-relevant="additions"
@@ -126,7 +129,12 @@ export function MessageList({
                       </span>
                     </div>
                   ) : null}
-                  <MessageBubble message={message} self={self} onDiscard={onDiscard} />
+                  <MessageBubble
+                    message={message}
+                    self={self}
+                    onDiscard={onDiscard}
+                    onRetry={onRetry}
+                  />
                 </div>
               );
             })}

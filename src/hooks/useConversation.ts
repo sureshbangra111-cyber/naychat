@@ -12,6 +12,8 @@ import {
   fetchSettings,
   startConversation as startConversationRpc,
 } from '../services/conversations';
+import { generateUuid } from '../lib/visitor';
+import { trackMetaEvent } from '../lib/metaPixel';
 import type { AppSettings, CampaignParams, Conversation } from '../types/chat';
 
 type Status = 'initializing' | 'ready' | 'error';
@@ -47,7 +49,9 @@ export function useConversation() {
     async function bootstrap() {
       try {
         setVisitorId(getVisitorId());
-        await ensureAnonymousSession();
+        // Attribution goes up first so the server records first-touch attribution
+        // before the conversation exists.
+        await ensureAnonymousSession(campaign as unknown as Record<string, string | null>);
 
         const loadedSettings = await fetchSettings();
         if (active) setSettings(loadedSettings);
@@ -91,17 +95,54 @@ export function useConversation() {
       setStarting(true);
       setError(null);
       try {
+        /**
+         * One conversion, one id.
+         *
+         * The browser fires StartChat + Contact with this id, and the SAME id is
+         * sent to the server, which replays it through the Conversions API. Meta
+         * deduplicates the pair, so one visitor action is counted once.
+         */
+        const metaEventId = generateUuid();
+
         const id = await startConversationRpc({
           visitorId: visitorId || getVisitorId(),
           firstMessage,
           customerName,
           customerPhone,
           campaign,
+          metaEventId,
         });
         setActiveConversationId(id);
         const created = await fetchOwnConversation(id);
         setConversation(created);
         setStatus('ready');
+
+        // Fired AFTER a confirmed conversation exists, so these events only ever
+        // describe real conversions. Both are fire-and-forget: tracking must
+        // never delay or fail the chat.
+        void trackMetaEvent(
+          'StartChat',
+          {},
+          `startchat:${id}`,
+        ).then(() =>
+          // Contact: the visitor has meaningfully initiated contact by creating a
+          // conversation and sending its first message.
+          trackMetaEvent('Contact', { eventId: metaEventId }, `contact:${id}`),
+        );
+
+        /**
+         * LEAD — documented decision.
+         *
+         * This app has no checkout, trial or account step, so Lead is NOT fired
+         * for ordinary messages (that would inflate it into a fake conversion).
+         * The one genuine lead moment here is the visitor volunteering contact
+         * details, which is a real intent signal. It is fired at most once per
+         * conversation, and only when something was actually supplied.
+         */
+        if ((customerName && customerName.trim()) || (customerPhone && customerPhone.trim())) {
+          void trackMetaEvent('Lead', {}, `lead:${id}`);
+        }
+
         return true;
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Something went wrong.';

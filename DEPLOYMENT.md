@@ -10,6 +10,82 @@ npm start          # builds the frontend, then serves everything on PORT
 
 Open `http://localhost:4100/chat` (visitor) and `/admin/login` (admin).
 
+## ⚠️ Attachments on serverless hosting (Vercel)
+
+**Text chat, admin, Meta tracking and UTM attribution all work on Vercel.**
+Image and voice attachments need persistent storage, because a serverless
+function's filesystem is read-only and resets between invocations.
+
+`ATTACHMENT_STORAGE_DRIVER=local` is for a single Node process or a host with a
+persistent volume (a VPS, Railway/Render with a disk, Docker with a volume).
+
+On Vercel, uploads return **HTTP 503** with
+`"Sending photos and voice messages is temporarily unavailable. Please send your
+message as text instead."`, and the server log records the reason. This is
+deliberate: it is a clear, actionable message rather than a silent failure that
+would lose a customer's screenshot.
+
+To enable media on Vercel, either:
+
+1. Implement an object-storage driver in
+   `server/services/attachments/storage.ts` (the `AttachmentStorage` interface has
+   `put` / `getStream` / `getStreamRange` / `remove` / `exists`) and set
+   `ATTACHMENT_STORAGE_DRIVER` to it, or
+2. Use **Vercel Blob** (`@vercel/blob`) — `put` becomes `upload`, and
+   `getStream` returns a `Readable` from the stored blob.
+
+Nothing else changes: controllers, services, models and the frontend are all
+already driver-agnostic, and the storage-key/path-traversal guarantees live inside
+the driver.
+
+## Meta Ads / Conversions API
+
+Tracking is optional and **off by default**.
+
+### Browser Pixel — configured at runtime, no redeploy
+
+The Pixel ID lives in MongoDB and is edited at **Admin → Settings → Meta Ads
+Tracking**. It is served to the browser by `GET /api/public/config`.
+
+> Do **not** add a `VITE_META_PIXEL_ID`. Vite inlines `VITE_*` values into the
+> bundle at build time, which would mean a rebuild and redeploy every time the ID
+> changes, and would bake an account identifier into your public JavaScript.
+
+Verification steps:
+
+1. Admin → Settings → paste the Pixel ID → enable → Save.
+2. Press **Test Pixel** — confirms the format, the saved value, and that the
+   public endpoint serves it. It never calls Meta and never needs JavaScript.
+3. Open `/chat` in a normal browser, then check Meta Events Manager → Test
+   Events. You should see `PageView` then `ViewContent`.
+4. Start a chat and confirm `StartChat` + `Contact`.
+
+### Conversions API — server-only secret
+
+Add to **`server/.env`** (never a frontend `.env`):
+
+```bash
+META_PIXEL_ID=
+META_CONVERSIONS_API_ACCESS_TOKEN=
+META_GRAPH_API_VERSION=v21.0
+META_CONVERSIONS_API_ENABLED=true
+```
+
+`META_CONVERSIONS_API_ACCESS_TOKEN` is a credential with write access to your
+dataset. Treat it exactly like `SESSION_SECRET`:
+
+* server environment only,
+* never in `VITE_*`,
+* never in MongoDB or the Admin Settings UI,
+* never returned by `/api/public/config`,
+* never logged.
+
+If it is empty, Conversions API delivery is skipped entirely and the browser Pixel
+keeps working. To confirm the server is not silently failing, set
+`NODE_ENV` to development-style logging or watch for `[meta] Conversions API …`
+lines in the server log; delivery errors are logged with the HTTP status only.
+
+
 ## What the one process serves
 
 | Path | Serves |

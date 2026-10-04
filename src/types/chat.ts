@@ -31,12 +31,39 @@ export interface Conversation {
   closed_at: string | null;
 }
 
+/**
+ * Media metadata embedded in a message or returned by the upload endpoint.
+ *
+ * `url` is always the authorised `/api/attachments/:id` route — never a
+ * filesystem path and never a public bucket URL. The browser has no other way to
+ * address stored bytes, which is what keeps cross-visitor access impossible.
+ */
+export interface MessageAttachment {
+  id: string;
+  url: string;
+  kind: 'image' | 'audio';
+  mime_type: string;
+  size: number;
+  original_name: string | null;
+  width: number | null;
+  height: number | null;
+  duration_ms: number | null;
+}
+
+export type MessageType = 'text' | 'image' | 'audio';
+
 export interface Message {
   id: string;
   conversation_id: string;
   sender_type: SenderType;
   sender_id: string | null;
   message: string;
+  /**
+   * Derived server-side. Documents written before media support have no `type`
+   * and are normalised to 'text', so old and new messages share one renderer.
+   */
+  type: MessageType;
+  attachment: MessageAttachment | null;
   created_at: string;
   read_at: string | null;
   attachment_url: string | null;
@@ -50,12 +77,41 @@ export interface PendingMessage {
   conversation_id: string;
   sender_type: SenderType;
   message: string;
+  type: MessageType;
+  attachment: MessageAttachment | null;
   created_at: string;
   pending: true;
   failed: boolean;
+  /** 0-100 while uploading; null when there is nothing left to upload. */
+  uploadProgress: number | null;
+  /** Distinguishes an image upload from a voice recording in the bubble. */
+  uploadKind?: 'image' | 'audio';
+  /** Local blob URL for the optimistic preview; revoked once confirmed. */
+  previewUrl?: string;
 }
 
 export type DisplayMessage = Message | PendingMessage;
+
+/** Response of POST /api/conversations/:id/attachments. */
+export interface UploadedAttachment {
+  id: string;
+  conversation_id: string;
+  kind: 'image' | 'audio';
+  mime_type: string;
+  size: number;
+  original_name: string | null;
+  width: number | null;
+  height: number | null;
+  duration_ms: number | null;
+  url: string;
+  created_at: string;
+}
+
+/** Server-advertised limits, fetched from GET /api/attachment-limits. */
+export interface AttachmentLimits {
+  image_max_bytes: number;
+  audio_max_bytes: number;
+}
 
 /** Conversation row as returned by `admin_list_conversations`. */
 export interface AdminConversationSummary {
@@ -68,7 +124,9 @@ export interface AdminConversationSummary {
   utm_source: string | null;
   utm_medium: string | null;
   utm_campaign: string | null;
+  utm_term: string | null;
   utm_content: string | null;
+  fbclid: string | null;
   created_at: string;
   updated_at: string;
   last_message_at: string | null;

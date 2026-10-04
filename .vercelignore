@@ -1,0 +1,12 @@
+# Secrets must never be uploaded (also covered by .gitignore).
+.env
+.env.*
+server/.env
+server/.env.*
+
+# Local noise
+node_modules
+dist
+dist-server
+.vercel
+*.log

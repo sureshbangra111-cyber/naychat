@@ -9,13 +9,16 @@
 import { Router } from 'express';
 import { attachVisitor, requireVisitor } from '../middleware/auth.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
+import { captureAttribution, getAttribution } from '../services/attribution.js';
 import { requireObjectId, clampInt } from '../utils/validate.js';
 import {
   getMessagesSince,
   getOlderMessages,
+  getPublicConfig,
   getOwnedConversation,
   getRecentMessages,
   getSettings,
+  sendCustomerMediaMessage,
   sendCustomerMessage,
   startConversation,
   updateCustomerDetails,
@@ -26,11 +29,38 @@ export const customerRouter = Router();
 
 customerRouter.use(attachVisitor);
 
-/** Session probe: creates a visitor session on first call. */
+/**
+ * Session probe: creates a visitor session on first call.
+ *
+ * Also accepts the advertising attribution found in the URL, so it can be stored
+ * once on the visitor BEFORE any conversation exists. That is what makes the
+ * attribution survive a refresh, a cleaned URL, or a second conversation later on.
+ *
+ * Attribution is best-effort: a failure here must never block a visitor from
+ * chatting, so it is caught and ignored.
+ */
 customerRouter.get(
   '/session',
   asyncHandler(async (req, res) => {
+    await captureAttribution(req.visitor!.visitorId, req.query as Record<string, unknown>);
     res.json({ visitor_id: req.visitor!.publicId });
+  }),
+);
+
+/** Reads back the stored first-touch attribution, for the visitor's own UI. */
+customerRouter.get(
+  '/attribution',
+  requireVisitor,
+  asyncHandler(async (req, res) => {
+    const stored = await getAttribution(req.visitor!.visitorId);
+    res.json({
+      source: stored?.source ?? null,
+      medium: stored?.medium ?? null,
+      campaign: stored?.campaign ?? null,
+      term: stored?.term ?? null,
+      content: stored?.content ?? null,
+      fbclid: stored?.fbclid ?? null,
+    });
   }),
 );
 
@@ -38,6 +68,25 @@ customerRouter.get(
   '/settings',
   asyncHandler(async (_req, res) => {
     res.json(await getSettings());
+  }),
+);
+
+/**
+ * Public runtime configuration.
+ *
+ * Unauthenticated on purpose: the browser needs the Pixel ID before it can decide
+ * whether to load Meta's script. The response is an explicit allow-list built by
+ * getPublicConfig() — it contains no secret, no database identifier and no
+ * session material. The server-only Conversions API access token is never part of
+ * it, and this route has no code path that could add one.
+ */
+customerRouter.get(
+  '/public/config',
+  asyncHandler(async (_req, res) => {
+    // Config is read on every page load; a short cache keeps it fresh enough to
+    // pick up an admin change without a rebuild while avoiding a DB hit per view.
+    res.setHeader('Cache-Control', 'no-cache');
+    res.json(await getPublicConfig());
   }),
 );
 
@@ -53,6 +102,12 @@ customerRouter.post(
       // Untrusted: every campaign field is individually re-validated and
       // length-capped inside the service before it reaches the database.
       campaign: body.campaign as StartConversationInput['campaign'],
+      // Shared Pixel <-> Conversions API dedup key, capped in the service.
+      metaEventId: body.meta_event_id ?? body.metaEventId,
+      // Request-derived technical identifiers for Meta matching. These are
+      // hashed server-side and never stored.
+      clientIpAddress: req.ip ?? null,
+      clientUserAgent: req.get('user-agent') ?? null,
     });
     res.status(201).json(result);
   }),
@@ -112,6 +167,21 @@ customerRouter.post(
   asyncHandler(async (req, res) => {
     const id = requireObjectId(req.params.id, 'conversation id');
     const body = req.body as Record<string, unknown>;
+
+    // A media message carries an `attachmentId` that was uploaded through
+    // POST /conversations/:id/attachments in this same session. The caption is
+    // optional there, so the two paths must not be conflated: an absent
+    // attachment id is still a plain text message, exactly as before.
+    if (typeof body.attachmentId === 'string' && body.attachmentId.length > 0) {
+      const result = await sendCustomerMediaMessage(req.visitor!.visitorId, id, {
+        attachmentId: body.attachmentId,
+        message: body.message,
+        clientId: body.clientId,
+      });
+      res.status(201).json(result);
+      return;
+    }
+
     const result = await sendCustomerMessage(req.visitor!.visitorId, id, {
       message: body.message,
       clientId: body.clientId,

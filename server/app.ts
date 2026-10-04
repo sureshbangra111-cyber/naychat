@@ -14,6 +14,7 @@ import path from 'node:path';
 import { config, PROJECT_ROOT } from './config/env.js';
 import { customerRouter } from './controllers/customer.js';
 import { adminRouter } from './controllers/admin.js';
+import { attachmentsRouter } from './controllers/attachments.js';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler.js';
 import { isDatabaseConnected } from './config/db.js';
 
@@ -71,6 +72,27 @@ export function createApp() {
       database: isDatabaseConnected() ? 'connected' : 'disconnected',
     });
   });
+
+  /**
+   * Attachment limits, so the browser can validate a file BEFORE spending
+   * bandwidth on it. These are the same values the server enforces; the client
+   * copy is a convenience, never the security boundary.
+   */
+  app.get('/api/attachment-limits', (_req, res) => {
+    res.json({
+      image_max_bytes: config.attachments.maxImageBytes,
+      audio_max_bytes: config.attachments.maxAudioBytes,
+      image_mime_types: ['image/jpeg', 'image/png', 'image/webp', 'image/gif'],
+      audio_mime_types: ['audio/webm', 'audio/ogg', 'audio/mp4', 'audio/mpeg', 'audio/wav'],
+    });
+  });
+
+  // Media routes. Registered BEFORE the JSON routers and, critically, before the
+  // SPA fallback below — so `/api/attachments/:id` can never be swallowed by the
+  // catch-all that returns index.html. `express.json()` does not consume
+  // multipart/form-data, so the upload routes stream their body straight through
+  // the busboy parser.
+  app.use('/api', attachmentsRouter);
 
   app.use('/api', customerRouter);
   app.use('/api/admin', adminRouter);
